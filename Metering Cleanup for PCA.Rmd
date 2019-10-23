@@ -1,0 +1,374 @@
+---
+title: "Metering cleanup for PCA"
+author: "Ben Payeur"
+date: "October 13, 2019"
+output: html_document
+---
+
+```{r}
+# Set working directory and read in data
+setwd("C:/Users/payeurb/Desktop/Projects/TOU pilot/DS 502 Project/R_analysis")
+metering_original <- read.csv('Original.csv', header = TRUE)
+```
+
+```{r}
+### Run this if you want to filter out register data ###
+### FILTERS OUT REGISTER DATA ###
+metering <- metering_original[metering_original$READ_FREQUENCY == 'Interval', ]
+```
+
+```{r}
+# Check to make sure that 'metering$READ_VALUE' is numeric
+# If it isn't, convert it to numeric
+
+if (data.class(metering$READ_VALUE) == 'numeric') {
+  print('All good, metering$READ_VALUE is numeric!')
+} else if (data.class(metering$READ_VALUE) == 'factor') {
+  metering$READ_VALUE <- as.numeric(levels(metering$READ_VALUE))[metering$READ_VALUE]
+  print(paste('Number of NA values in meter data', sum(is.na(metering$READ_VALUE))))
+} else {
+  print('ERROR: Data class of metering$READ_VALUE is not factor or numeric')
+}
+
+# Are there any NA entries in metering$READ_VALUE?
+sum(is.na(metering$READ_VALUE))
+```
+
+```{r}
+### Split date and time using DST timestamping: 
+### Allows for conversion of metering month/day/year to Julian day, day of week, etc.
+### Allows for conversion of metering month/day/year to numeric equivalents
+
+library(stringr)
+library(lubridate)
+
+date.time <- data.frame('Read.Date..DST.' = metering$Read.Date..DST.)  # isolate timestamp
+date.time$Read.Date..DST. <- as.character(date.time$Read.Date..DST.)   # convert factor to character
+
+first.split <- data.frame(str_split_fixed(date.time$Read.Date..DST., ' ', n=2))
+names(first.split) <- c('Date', 'Time')
+
+second.split <- data.frame(str_split_fixed(first.split$Date, '/', n=3))
+names(second.split) <- c('Month', 'Day', 'Year')
+
+```
+
+```{r}
+### Add Date, Month, Day, Year to 'info.to.add.DF'
+
+### Convert factor to numeric:
+# https://stackoverflow.com/questions/3418128/how-to-convert-a-factor-to-integer-numeric-without-loss-of-information
+info.to.add.DF <- data.frame('Read.Date..DST.' = metering$Read.Date..DST.)
+info.to.add.DF$Month <- as.numeric(levels(second.split$Month))[second.split$Month]
+info.to.add.DF$Day <- as.numeric(levels(second.split$Day))[second.split$Day]
+info.to.add.DF$Year <- as.numeric(levels(second.split$Year))[second.split$Year]
+
+sum(is.na(info.to.add.DF$Read.Date..DST.))
+sum(is.na(info.to.add.DF$Month))
+sum(is.na(info.to.add.DF$Day))
+sum(is.na(info.to.add.DF$Year))
+
+# Note that first split is still needed for the next chunk of code
+rm(second.split, date.time)
+```
+
+```{r}
+### Create numeric 'Hour' variable - necessary for adding temperature & other things.
+
+first.split$Time.Char <- as.character(first.split$Time)
+
+Times <- data.frame(str_split_fixed(first.split$Time.Char, ':', n=2))
+names(Times) <- c('Hour', 'Minutes')
+
+first.split$Hour <- Times$Hour
+first.split$Hour <- as.numeric(levels(first.split$Hour))[first.split$Hour]
+```
+
+
+```{r}
+### Convert times from 00:00 format to numeric 0.00 format
+
+first.split$Minutes <- Times$Minutes
+
+first.split$Numeric_Mins <- ifelse(first.split$Minutes == '00', 0.00,
+                                    ifelse(first.split$Minutes == '15', 0.25,
+                                    ifelse(first.split$Minutes == '30', 0.50,
+                                    ifelse(first.split$Minutes == '45', 0.75, NA))))
+
+first.split$Numeric_Time <- first.split$Hour + first.split$Numeric_Mins 
+
+# Add time values to dataframe
+info.to.add.DF$Numeric_Time <- first.split$Numeric_Time
+info.to.add.DF$Hour <- first.split$Hour
+
+# Were there any NA values returned from nested ifelse() statements?
+print('Number of NA values in Numeric_Mins after time conversion is:')
+print(sum(is.na(first.split$Numeric_Mins)))
+print('Number of NA values in Numeric_Time after time conversion is:')
+print(sum(is.na(first.split$Numeric_Time)))
+
+
+rm(first.split, Times)   ### All important temporary info is in first.split
+```
+
+```{r}
+### Add meter numbers and read values to info.to.add.DF
+info.to.add.DF$METER_NUMBER <- metering$METER_NUMBER
+info.to.add.DF$READ_VALUE <- metering$READ_VALUE
+```
+
+
+```{r}
+# What are the unique meter numbers?
+unique(info.to.add.DF$METER_NUMBER)
+```
+
+```{r}
+# What is the first meter number when unique(metering$METER_NUMBER) is called?
+unique(info.to.add.DF$METER_NUMBER)[1]
+
+# How many unique meters are in dataset?
+length(unique(info.to.add.DF$METER_NUMBER))
+```
+
+
+```{r}
+### Create new dataframe for each unique meter number that only contains 
+### information about that meter/customer
+
+cust_01 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[1], ]
+cust_02 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[2], ]
+cust_03 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[3], ]
+cust_04 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[4], ]
+cust_05 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[5], ]
+cust_06 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[6], ]
+cust_07 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[7], ]
+cust_08 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[8], ]
+cust_09 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[9], ]
+cust_10 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[10], ]
+cust_11 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[11], ]
+cust_12 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[12], ]
+cust_13 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[13], ]
+cust_14 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[14], ]
+cust_15 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[15], ]
+cust_16 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[16], ]
+cust_17 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[17], ]
+cust_18 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[18], ]
+cust_19 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[19], ]
+cust_20 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[20], ]
+cust_21 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[21], ]
+cust_22 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[22], ]
+cust_23 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[23], ]
+cust_24 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[24], ]
+cust_25 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[25], ]
+cust_26 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[26], ]
+cust_27 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[27], ]
+cust_28 <- info.to.add.DF[info.to.add.DF$METER_NUMBER == unique(info.to.add.DF$METER_NUMBER)[28], ]
+
+```
+
+```{r}
+# Remove customers that have different number of observations
+rm(cust_01, cust_05, cust_14, cust_17, cust_18, cust_22, cust_24, cust_27, cust_28)
+```
+
+
+```{r}
+### Does all timestamping match for remaining customers?
+all(cust_02$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_02$Month == cust_03$Month)
+all(cust_02$Day == cust_03$Day)
+all(cust_02$Year == cust_03$Year)
+all(cust_02$Numeric_Time == cust_03$Numeric_Time)
+all(cust_02$Hour == cust_03$Hour)
+
+all(cust_04$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_04$Month == cust_03$Month)
+all(cust_04$Day == cust_03$Day)
+all(cust_04$Year == cust_03$Year)
+all(cust_04$Numeric_Time == cust_03$Numeric_Time)
+all(cust_04$Hour == cust_03$Hour)
+
+all(cust_06$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_06$Month == cust_03$Month)
+all(cust_06$Day == cust_03$Day)
+all(cust_06$Year == cust_03$Year)
+all(cust_06$Numeric_Time == cust_03$Numeric_Time)
+all(cust_06$Hour == cust_03$Hour)
+
+all(cust_07$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_07$Month == cust_03$Month)
+all(cust_07$Day == cust_03$Day)
+all(cust_07$Year == cust_03$Year)
+all(cust_07$Numeric_Time == cust_03$Numeric_Time)
+all(cust_07$Hour == cust_03$Hour)
+
+all(cust_08$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_08$Month == cust_03$Month)
+all(cust_08$Day == cust_03$Day)
+all(cust_08$Year == cust_03$Year)
+all(cust_08$Numeric_Time == cust_03$Numeric_Time)
+all(cust_08$Hour == cust_03$Hour)
+
+all(cust_09$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_09$Month == cust_03$Month)
+all(cust_09$Day == cust_03$Day)
+all(cust_09$Year == cust_03$Year)
+all(cust_09$Numeric_Time == cust_03$Numeric_Time)
+all(cust_09$Hour == cust_03$Hour)
+
+all(cust_10$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_10$Month == cust_03$Month)
+all(cust_10$Day == cust_03$Day)
+all(cust_10$Year == cust_03$Year)
+all(cust_10$Numeric_Time == cust_03$Numeric_Time)
+all(cust_10$Hour == cust_03$Hour)
+
+all(cust_11$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_11$Month == cust_03$Month)
+all(cust_11$Day == cust_03$Day)
+all(cust_11$Year == cust_03$Year)
+all(cust_11$Numeric_Time == cust_03$Numeric_Time)
+all(cust_11$Hour == cust_03$Hour)
+
+all(cust_12$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_12$Month == cust_03$Month)
+all(cust_12$Day == cust_03$Day)
+all(cust_12$Year == cust_03$Year)
+all(cust_12$Numeric_Time == cust_03$Numeric_Time)
+all(cust_12$Hour == cust_03$Hour)
+
+all(cust_13$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_13$Month == cust_03$Month)
+all(cust_13$Day == cust_03$Day)
+all(cust_13$Year == cust_03$Year)
+all(cust_13$Numeric_Time == cust_03$Numeric_Time)
+all(cust_13$Hour == cust_03$Hour)
+
+all(cust_15$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_15$Month == cust_03$Month)
+all(cust_15$Day == cust_03$Day)
+all(cust_15$Year == cust_03$Year)
+all(cust_15$Numeric_Time == cust_03$Numeric_Time)
+all(cust_15$Hour == cust_03$Hour)
+
+all(cust_16$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_16$Month == cust_03$Month)
+all(cust_16$Day == cust_03$Day)
+all(cust_16$Year == cust_03$Year)
+all(cust_16$Numeric_Time == cust_03$Numeric_Time)
+all(cust_16$Hour == cust_03$Hour)
+
+all(cust_19$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_19$Month == cust_03$Month)
+all(cust_19$Day == cust_03$Day)
+all(cust_19$Year == cust_03$Year)
+all(cust_19$Numeric_Time == cust_03$Numeric_Time)
+all(cust_19$Hour == cust_03$Hour)
+
+all(cust_20$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_20$Month == cust_03$Month)
+all(cust_20$Day == cust_03$Day)
+all(cust_20$Year == cust_03$Year)
+all(cust_20$Numeric_Time == cust_03$Numeric_Time)
+all(cust_20$Hour == cust_03$Hour)
+
+all(cust_21$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_21$Month == cust_03$Month)
+all(cust_21$Day == cust_03$Day)
+all(cust_21$Year == cust_03$Year)
+all(cust_21$Numeric_Time == cust_03$Numeric_Time)
+all(cust_21$Hour == cust_03$Hour)
+
+all(cust_23$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_23$Month == cust_03$Month)
+all(cust_23$Day == cust_03$Day)
+all(cust_23$Year == cust_03$Year)
+all(cust_23$Numeric_Time == cust_03$Numeric_Time)
+all(cust_23$Hour == cust_03$Hour)
+
+all(cust_25$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_25$Month == cust_03$Month)
+all(cust_25$Day == cust_03$Day)
+all(cust_25$Year == cust_03$Year)
+all(cust_25$Numeric_Time == cust_03$Numeric_Time)
+all(cust_25$Hour == cust_03$Hour)
+
+all(cust_26$Read.Date..DST. == cust_03$Read.Date..DST.)
+all(cust_26$Month == cust_03$Month)
+all(cust_26$Day == cust_03$Day)
+all(cust_26$Year == cust_03$Year)
+all(cust_26$Numeric_Time == cust_03$Numeric_Time)
+all(cust_26$Hour == cust_03$Hour)
+
+```
+
+```{r}
+### If all timestamping matched in previous chunk, combine metering data into one dataframe
+met_combined <- data.frame('Read.Date..DST.' = cust_02$Read.Date..DST.)
+met_combined$Month <- cust_02$Month
+met_combined$Day <- cust_02$Day
+met_combined$Year <- cust_02$Year
+met_combined$Numeric_Time <- cust_02$Numeric_Time
+met_combined$Hour <- cust_02$Hour
+
+met_combined$cust_02 <- cust_02$READ_VALUE
+met_combined$cust_03 <- cust_03$READ_VALUE
+met_combined$cust_04 <- cust_04$READ_VALUE
+met_combined$cust_06 <- cust_06$READ_VALUE
+met_combined$cust_07 <- cust_07$READ_VALUE
+met_combined$cust_08 <- cust_08$READ_VALUE
+met_combined$cust_09 <- cust_09$READ_VALUE
+met_combined$cust_10 <- cust_10$READ_VALUE
+met_combined$cust_11 <- cust_11$READ_VALUE
+met_combined$cust_12 <- cust_12$READ_VALUE
+met_combined$cust_13 <- cust_13$READ_VALUE
+met_combined$cust_15 <- cust_15$READ_VALUE
+met_combined$cust_16 <- cust_16$READ_VALUE
+met_combined$cust_19 <- cust_19$READ_VALUE
+met_combined$cust_20 <- cust_20$READ_VALUE
+met_combined$cust_21 <- cust_21$READ_VALUE
+met_combined$cust_23 <- cust_23$READ_VALUE
+met_combined$cust_25 <- cust_25$READ_VALUE
+met_combined$cust_26 <- cust_26$READ_VALUE
+
+```
+
+```{r}
+# Final NA checks
+sum(is.na(met_combined$Month))
+sum(is.na(met_combined$Day))
+sum(is.na(met_combined$Year))
+sum(is.na(met_combined$Numeric_Time))
+
+sum(is.na(met_combined$cust_02))
+sum(is.na(met_combined$cust_03))
+sum(is.na(met_combined$cust_04))
+sum(is.na(met_combined$cust_06))
+sum(is.na(met_combined$cust_07))
+sum(is.na(met_combined$cust_08))
+sum(is.na(met_combined$cust_09))
+sum(is.na(met_combined$cust_10))
+sum(is.na(met_combined$cust_11))
+sum(is.na(met_combined$cust_12))
+sum(is.na(met_combined$cust_13))
+sum(is.na(met_combined$cust_15))
+sum(is.na(met_combined$cust_16))
+sum(is.na(met_combined$cust_19))
+sum(is.na(met_combined$cust_20))
+sum(is.na(met_combined$cust_21))
+sum(is.na(met_combined$cust_23))
+sum(is.na(met_combined$cust_25))
+sum(is.na(met_combined$cust_26))
+
+
+```
+
+```{r}
+### Write out a .csv
+# write.csv(met_combined, file = 'Metering data for PCA.csv', row.names = FALSE)
+```
+
+
+
+

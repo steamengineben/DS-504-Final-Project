@@ -1,0 +1,710 @@
+---
+title: "Metering Data Cleaning"
+author: "Ben Payeur"
+date: "October 2019"
+output: html_document
+---
+
+```{r}
+# Set working directory and read in data
+
+# Change to the working directory you are using
+setwd("")
+
+# metering <- read.csv('401911.csv', header = TRUE)  
+
+metering <- read.csv('Usage Data.csv', header = TRUE)
+
+```
+
+```{r}
+### Run this if you want to filter out register data ###
+### FILTERS OUT REGISTER DATA ###
+
+metering <- metering[metering$READ_FREQUENCY == 'Interval', ]
+
+```
+
+```{r}
+# Check to make sure that 'metering$READ_VALUE' is numeric
+# If it isn't, convert it to numeric
+
+if (data.class(metering$READ_VALUE) == 'numeric') {
+  print('All good, metering$READ_VALUE is numeric!')
+} else if (data.class(metering$READ_VALUE) == 'factor') {
+  metering$READ_VALUE <- as.numeric(levels(metering$READ_VALUE))[metering$READ_VALUE]
+  print(paste('Number of NA values in meter data', sum(is.na(metering$READ_VALUE))))
+} else {
+  print('ERROR: Data class of metering$READ_VALUE is not factor or numeric')
+}
+
+```
+
+```{r}
+### Begin building dataframe of relevant information
+info.to.add.DF <- data.frame('METER_NUMBER' = metering$METER_NUMBER)
+info.to.add.DF$STATE_CODE <- metering$STATE_CODE
+info.to.add.DF$TOWN_CODE <- metering$TOWN_CODE
+
+```
+
+
+```{r}
+### NOTE: USE ONE OR THE OTHER OF THE NEXT TWO CHUNKS;
+### ONE USES DST TIMESTAMPING, OTHER USES NON-DST TIMESTAMPING 
+
+### Split date and time using non-DST timestamping: 
+### Allows for conversion of metering month/day/year to Julian day, day of week, etc.
+### Allows for conversion of metering month/day/year to numeric equivalents
+
+# library(stringr)
+# library(lubridate)
+# 
+# date.time <- data.frame('READ_DTM' = metering$READ_DTM)  # isolate timestamp
+# date.time$READ_DTM <- as.character(date.time$READ_DTM)   # convert factor to character
+# 
+# first.split <- data.frame(str_split_fixed(date.time$READ_DTM, ' ', n=2))
+# names(first.split) <- c('Date', 'Time')
+# 
+# second.split <- data.frame(str_split_fixed(first.split$Date, '/', n=3))
+# names(second.split) <- c('Month', 'Day', 'Year')
+
+```
+
+
+```{r}
+### NOTE: USE ONE OR THE OTHER OF THIS OR PREVIOUS CHUNK;
+### ONE USES DST TIMESTAMPING, OTHER USES NON-DST TIMESTAMPING 
+
+### Split date and time using DST timestamping: 
+### Allows for conversion of metering month/day/year to Julian day, day of week, etc.
+### Allows for conversion of metering month/day/year to numeric equivalents
+
+library(stringr)
+library(lubridate)
+
+date.time <- data.frame('Read.Date..DST.' = metering$Read.Date..DST.)  # isolate timestamp
+date.time$Read.Date..DST. <- as.character(date.time$Read.Date..DST.)   # convert factor to character
+
+first.split <- data.frame(str_split_fixed(date.time$Read.Date..DST., ' ', n=2))
+names(first.split) <- c('Date', 'Time')
+
+second.split <- data.frame(str_split_fixed(first.split$Date, '/', n=3))
+names(second.split) <- c('Month', 'Day', 'Year')
+
+```
+
+
+```{r}
+### Add original timestamps, day of week, 
+### numeric day of week, and numeric Julian Day to dataframe
+
+# https://stackoverflow.com/questions/11985799/converting-date-to-a-day-of-week-in-r
+
+# Original timestamps from metering data
+info.to.add.DF$Date <- metering$READ_DTM
+info.to.add.DF$Date..DST <- metering$Read.Date..DST.
+
+# Add day of week to dataframe
+info.to.add.DF$Wk.Day <- wday(paste(second.split$Year, 
+                                    second.split$Month,
+                                    second.split$Day,
+                                    sep = "-", collapse = NULL),
+                              label = TRUE)
+
+# Add day of week number to dataframe
+info.to.add.DF$Wk.Day.Num <- wday(paste(second.split$Year,
+                                        second.split$Month,
+                                        second.split$Day,
+                                        sep = "-", collapse = NULL))
+
+# Add Julian Day to dataframe
+info.to.add.DF$Julian_Day <- yday(paste(second.split$Year, 
+                                   second.split$Month,
+                                   second.split$Day,
+                                   sep = "-", collapse = NULL))
+
+```
+
+
+```{r}
+### Add Date, Month, Day, Year to 'info.to.add.DF'
+
+### Convert factor to numeric:
+# https://stackoverflow.com/questions/3418128/how-to-convert-a-factor-to-integer-numeric-without-loss-of-information
+
+info.to.add.DF$Month <- as.numeric(levels(second.split$Month))[second.split$Month]  
+info.to.add.DF$Day <- as.numeric(levels(second.split$Day))[second.split$Day]
+info.to.add.DF$Year <- as.numeric(levels(second.split$Year))[second.split$Year]
+
+# Note that first split is still needed for the next chunk of code
+rm(second.split, date.time)
+
+```
+
+
+```{r}
+### Create numeric 'Hour' variable - necessary for adding temperature & other things.
+
+first.split$Time.Char <- as.character(first.split$Time)
+
+Times <- data.frame(str_split_fixed(first.split$Time.Char, ':', n=2))
+names(Times) <- c('Hour', 'Minutes')
+
+first.split$Hour <- Times$Hour
+first.split$Hour <- as.numeric(levels(first.split$Hour))[first.split$Hour]
+
+```
+
+
+```{r}
+### Convert times from 00:00 format to numeric 0.00 format
+
+first.split$Minutes <- Times$Minutes
+
+first.split$Numeric_Mins <- ifelse(first.split$Minutes == '00', 0.00,
+                                    ifelse(first.split$Minutes == '15', 0.25,
+                                    ifelse(first.split$Minutes == '30', 0.50,
+                                    ifelse(first.split$Minutes == '45', 0.75, NA))))
+
+first.split$Numeric_Time <- first.split$Hour + first.split$Numeric_Mins 
+
+# Add time values to dataframe
+info.to.add.DF$Numeric_Time <- first.split$Numeric_Time
+info.to.add.DF$Hour <- first.split$Hour
+
+# Were there any NA values returned from nested ifelse() statements?
+print('Number of NA values in Numeric_Mins after time conversion is:')
+print(sum(is.na(first.split$Numeric_Mins)))
+print('Number of NA values in Numeric_Time after time conversion is:')
+print(sum(is.na(first.split$Numeric_Time)))
+
+
+rm(first.split, Times)   ### All important temporary info is in first.split
+
+```
+
+
+
+```{r}
+### Create function that takes two dataframes and a string as input, and
+### takes the Data specified by the string from one dataframe and adds it to
+### the other dataframe if Year, Month, and Day match in both dataframes
+
+add.Data <- function(DF.to.Add.To, DF.to.Take.From, Data) {
+  
+library(plyr)
+
+empty.daily.Take.From.DF <- 0
+
+hourly.Data <- data.frame('Data' = numeric(0))
+for (Year in min(DF.to.Add.To$Year):max(DF.to.Add.To$Year)) {
+for (Month in 1:12) {
+for (Day in 1:31) {
+
+  daily.T <- DF.to.Take.From[DF.to.Take.From$Year == Year &
+                                 DF.to.Take.From$Month == Month &
+                                 DF.to.Take.From$Day == Day, ]
+  
+  daily.A <- DF.to.Add.To[DF.to.Add.To$Year == Year &
+                              DF.to.Add.To$Month == Month &
+                              DF.to.Add.To$Day == Day, ]
+
+  if (! empty(daily.A)) {
+    if (! empty(daily.T)) {
+      daily.A$Hour_Data <- ifelse(daily.A$Hour == 0, subset(daily.T, Hour==0, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 1, subset(daily.T, Hour==1, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 2, subset(daily.T, Hour==2, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 3, subset(daily.T, Hour==3, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 4, subset(daily.T, Hour==4, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 5, subset(daily.T, Hour==5, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 6, subset(daily.T, Hour==6, select=Data)[1, ], 
+                           ifelse(daily.A$Hour == 7, subset(daily.T, Hour==7, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 8, subset(daily.T, Hour==8, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 9, subset(daily.T, Hour==9, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 10, subset(daily.T, Hour==10, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 11, subset(daily.T, Hour==11, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 12, subset(daily.T, Hour==12, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 13, subset(daily.T, Hour==13, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 14, subset(daily.T, Hour==14, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 15, subset(daily.T, Hour==15, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 16, subset(daily.T, Hour==16, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 17, subset(daily.T, Hour==17, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 18, subset(daily.T, Hour==18, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 19, subset(daily.T, Hour==19, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 20, subset(daily.T, Hour==20, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 21, subset(daily.T, Hour==21, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 22, subset(daily.T, Hour==22, select=Data)[1, ],
+                           ifelse(daily.A$Hour == 23, subset(daily.T, Hour==23, select=Data)[1, ], NA
+                                  ))))))))))))))))))))))))
+    
+    Hourly_Data_Per_Day <- data.frame('Data' = daily.A$Hour_Data)
+    hourly.Data <- rbind(hourly.Data, Hourly_Data_Per_Day)
+    
+    } else if(empty(daily.T)) {
+    
+      empty.daily.Take.From.DF <- empty.daily.Take.From.DF + 1
+      
+      daily.A$Hour_Data <- ifelse(daily.A$Hour == 0, NA,
+                           ifelse(daily.A$Hour == 1, NA,
+                           ifelse(daily.A$Hour == 2, NA,
+                           ifelse(daily.A$Hour == 3, NA,
+                           ifelse(daily.A$Hour == 4, NA,
+                           ifelse(daily.A$Hour == 5, NA,
+                           ifelse(daily.A$Hour == 6, NA,
+                           ifelse(daily.A$Hour == 7, NA,
+                           ifelse(daily.A$Hour == 8, NA,
+                           ifelse(daily.A$Hour == 9, NA,
+                           ifelse(daily.A$Hour == 10, NA,
+                           ifelse(daily.A$Hour == 11, NA,
+                           ifelse(daily.A$Hour == 12, NA,
+                           ifelse(daily.A$Hour == 13, NA,
+                           ifelse(daily.A$Hour == 14, NA,
+                           ifelse(daily.A$Hour == 15, NA,
+                           ifelse(daily.A$Hour == 16, NA,
+                           ifelse(daily.A$Hour == 17, NA,
+                           ifelse(daily.A$Hour == 18, NA,
+                           ifelse(daily.A$Hour == 19, NA,
+                           ifelse(daily.A$Hour == 20, NA,
+                           ifelse(daily.A$Hour == 21, NA,
+                           ifelse(daily.A$Hour == 22, NA,
+                           ifelse(daily.A$Hour == 23, NA, NA
+                                  ))))))))))))))))))))))))
+      
+      Hourly_Data_Per_Day <- data.frame('Data' = daily.A$Hour_Data)
+      hourly.Data <- rbind(hourly.Data, Hourly_Data_Per_Day)
+    }
+  } 
+  
+}
+}
+}
+
+
+# How many days had none of the relevant data?
+print(paste("Number of days in DF.to.Add.To in which DF.to.Take.From has no data:",
+            empty.daily.Take.From.DF))
+ 
+# Return the relevant data 
+return(hourly.Data$Data)
+ 
+}
+
+```
+
+
+```{r}
+### Clean up weather data in preparation to add it to info.to.add.DF
+# Temperature, windspeed, and wind direction is the relevant data
+
+library(stringr)
+library(lubridate)
+
+# Read in Weather Data for all weather Stations, then isolate weather station of interest
+weather <- read.csv('Weather history.csv', header = TRUE)
+weather <- weather[weather$CODE == 'KPSM', ]
+
+# Create new dataframe for weather data and data class conversions for dates
+date.time.weather <- data.frame('CODE' = weather$CODE)
+
+# Convert 'dates' data class from factor to character, add to date.time.weather dataframe
+date.time.weather$Date <- as.character(weather$Date)
+
+# Split dates of temperature reads into Month, Day, Year
+split.weather <- data.frame(str_split_fixed(date.time.weather$Date, '/', n=3))
+names(split.weather) <- c('Month', 'Day', 'Year')
+
+# Add Month, Day, Year to date.time.weather dataframe
+
+date.time.weather$Month <- as.numeric(levels(split.weather$Month))[split.weather$Month]
+date.time.weather$Day <- as.numeric(levels(split.weather$Day))[split.weather$Day]
+date.time.weather$Year <- as.numeric(levels(split.weather$Year))[split.weather$Year]
+
+# Add Julian Day to date.time.weather dataframe
+date.time.weather$Julian_Day <- yday(paste(date.time.weather$Year,
+                                           date.time.weather$Month,
+                                           date.time.weather$Day,
+                                           sep = "-", collapse = NULL))
+
+# Add Hour, TMP, WSP, WDR to date.time.weather dataframe
+date.time.weather$Hour <- weather$Hour
+date.time.weather$TMP <- weather$TMP
+date.time.weather$WSP <- weather$WSP
+date.time.weather$WDR <- weather$WDR
+
+```
+
+
+```{r}
+### Using add.Data function, add Temperature data to info.to.add.DF
+
+info.to.add.DF$TMP <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                DF.to.Take.From = date.time.weather,
+                                Data = 'TMP')
+
+```
+
+
+```{r}
+### Using add.Data function, add Wind Speed data to info.to.add.DF
+
+info.to.add.DF$WSP <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                DF.to.Take.From = date.time.weather,
+                                Data = 'WSP')
+
+```
+
+
+```{r}
+### Using add.Data function, add Wind Direction data to info.to.add.DF
+info.to.add.DF$WDR <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                DF.to.Take.From = date.time.weather,
+                                Data = 'WDR')
+
+```
+
+
+```{r}
+### Remove values created in chunk that cleaned up weather data
+rm(weather, date.time.weather, split.weather)
+
+```
+
+
+```{r}
+### Add a few more values from original metering data
+info.to.add.DF$READ_FREQUENCY <- metering$READ_FREQUENCY
+info.to.add.DF$READ_VALUE <- metering$READ_VALUE
+info.to.add.DF$UOM <- metering$UOM
+
+# Add demand (in Watts) to info.to.add.DF
+### !!!!! NOTE - MULTIPLIED BY 1000 TO MAKE kW -> W !!!!!
+info.to.add.DF$Watts <- 4*info.to.add.DF$READ_VALUE * 1000
+
+```
+
+
+```{r}
+# Find max usage per day, 
+# then calculate proportion of max daily use for each 15 min data point
+
+library(plyr)
+
+# yearly <- info.to.add.DF[info.to.add.DF$Year == 2016, ]                            
+daily.Max <- data.frame('Day_Max' = numeric(0))
+for (Year in 2016:2019) {
+yearly <- info.to.add.DF[info.to.add.DF$Year == Year, ]
+
+for (i in 1:12) {
+  monthly <- yearly[yearly$Month == i, ]
+  if (! empty(monthly)) {
+  monthly$Day_Max <- ifelse(monthly$Day == 1, max(subset(monthly, Day==1, select=READ_VALUE)),
+                       ifelse(monthly$Day == 2, max(subset(monthly, Day==2, select=READ_VALUE)),
+                       ifelse(monthly$Day == 3, max(subset(monthly, Day==3, select=READ_VALUE)),
+                       ifelse(monthly$Day == 4, max(subset(monthly, Day==4, select=READ_VALUE)),
+                       ifelse(monthly$Day == 5, max(subset(monthly, Day==5, select=READ_VALUE)),
+                       ifelse(monthly$Day == 6, max(subset(monthly, Day==6, select=READ_VALUE)),
+                       ifelse(monthly$Day == 7, max(subset(monthly, Day==7, select=READ_VALUE)),
+                       ifelse(monthly$Day == 8, max(subset(monthly, Day==8, select=READ_VALUE)),
+                       ifelse(monthly$Day == 9, max(subset(monthly, Day==9, select=READ_VALUE)),
+                       ifelse(monthly$Day == 10, max(subset(monthly, Day==10, select=READ_VALUE)),
+                       ifelse(monthly$Day == 11, max(subset(monthly, Day==11, select=READ_VALUE)),
+                       ifelse(monthly$Day == 12, max(subset(monthly, Day==12, select=READ_VALUE)),
+                       ifelse(monthly$Day == 13, max(subset(monthly, Day==13, select=READ_VALUE)),
+                       ifelse(monthly$Day == 14, max(subset(monthly, Day==14, select=READ_VALUE)),
+                       ifelse(monthly$Day == 15, max(subset(monthly, Day==15, select=READ_VALUE)),
+                       ifelse(monthly$Day == 16, max(subset(monthly, Day==16, select=READ_VALUE)),
+                       ifelse(monthly$Day == 17, max(subset(monthly, Day==17, select=READ_VALUE)),
+                       ifelse(monthly$Day == 18, max(subset(monthly, Day==18, select=READ_VALUE)),
+                       ifelse(monthly$Day == 19, max(subset(monthly, Day==19, select=READ_VALUE)),
+                       ifelse(monthly$Day == 20, max(subset(monthly, Day==20, select=READ_VALUE)),
+                       ifelse(monthly$Day == 21, max(subset(monthly, Day==21, select=READ_VALUE)),
+                       ifelse(monthly$Day == 22, max(subset(monthly, Day==22, select=READ_VALUE)),
+                       ifelse(monthly$Day == 23, max(subset(monthly, Day==23, select=READ_VALUE)),
+                       ifelse(monthly$Day == 24, max(subset(monthly, Day==24, select=READ_VALUE)),
+                       ifelse(monthly$Day == 25, max(subset(monthly, Day==25, select=READ_VALUE)),
+                       ifelse(monthly$Day == 26, max(subset(monthly, Day==26, select=READ_VALUE)),
+                       ifelse(monthly$Day == 27, max(subset(monthly, Day==27, select=READ_VALUE)),
+                       ifelse(monthly$Day == 28, max(subset(monthly, Day==28, select=READ_VALUE)),
+                       ifelse(monthly$Day == 29, max(subset(monthly, Day==29, select=READ_VALUE)),
+                       ifelse(monthly$Day == 30, max(subset(monthly, Day==30, select=READ_VALUE)),
+                       ifelse(monthly$Day == 31, max(subset(monthly, Day==31, select=READ_VALUE)), NA 
+                              )))))))))))))))))))))))))))))))
+
+monthly_max_per_day <- data.frame('Day_Max' = monthly$Day_Max) 
+daily.Max <- rbind(daily.Max, monthly_max_per_day)
+
+}
+}
+}
+
+### Add daily max data to info
+info.to.add.DF$Day_Max <- daily.Max$Day_Max
+
+### Calculate the proportion of daily max that each read value represents
+info.to.add.DF$Prop_Day_Max <- info.to.add.DF$READ_VALUE / info.to.add.DF$Day_Max 
+
+
+rm(daily.Max, monthly_max_per_day, yearly, monthly, Year, i)
+
+```
+
+
+```{r}
+### Read in aggregated ISO and Unitil data
+# NOTE: Subtract 1 from 'TI' feature to get time scale to be the same as metering data
+
+ISO.aggregate <- read.csv('ISO-NE & Unitil_aggregated_data.csv', header = TRUE)
+
+# Subtract ISO time index (TI) by 1 to get on same scale as metering data
+ISO.aggregate$Hour <- ISO.aggregate$TI - 1
+
+```
+
+
+```{r}
+### Using the add.Data function, add total ISO-NE demand to info.to.add.DF
+info.to.add.DF$ISO.tot.dmd <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                       DF.to.Take.From = ISO.aggregate,
+                                       Data = 'ISO.tot.dmd')
+
+```
+
+
+```{r}
+### Using the add.Data function, add New Hampshire Real-Time MWh to info.to.add.DF
+### NH RT MWh info comes from ISO-NE (load zone 4002); obtained from CMARS
+info.to.add.DF$NH.RT.MWh <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                     DF.to.Take.From = ISO.aggregate,
+                                     Data = 'NH.RT.MWh')
+
+```
+
+
+```{r}
+### Using the add.Data function, add UES-Capital MW to info.to.add.DF
+### UES-Capital MW info comes from CMARS
+info.to.add.DF$UES.Cap <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                   DF.to.Take.From = ISO.aggregate,
+                                   Data = 'UES.Cap')
+
+```
+
+
+```{r}
+### Using the add.Data function, add UES-Seacoast MW to info.to.add.DF
+### UES-Seacoast MW info comes from CMARS
+info.to.add.DF$UES.Sea <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                   DF.to.Take.From = ISO.aggregate,
+                                   Data = 'UES.Sea')
+
+```
+
+
+```{r}
+### Using the add.Data function, add New Hampshire Day-Ahead LMP to info.to.add.DF
+### NH Day-Ahead LMP info comes from CMARS
+info.to.add.DF$LMP.DA.NH <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                     DF.to.Take.From = ISO.aggregate,
+                                     Data = 'LMP.DA.NH')
+
+```
+
+
+```{r}
+### Using the add.Data function, add New Hampshire Real-Time LMP to info.to.add.DF
+### NH Real-Time LMP info comes from CMARS
+info.to.add.DF$LMP.RT.NH <- add.Data(DF.to.Add.To = info.to.add.DF,
+                                     DF.to.Take.From = ISO.aggregate,
+                                     Data = 'LMP.RT.NH')
+
+```
+
+```{r}
+### How many NA's are in info.to.add.DF? Where are they?
+info.to.add.DF <- info.to.add.DF[info.to.add.DF$Year != 2019, ]
+
+na.values <- info.to.add.DF[is.na(info.to.add.DF$ISO.tot.dmd), ]
+
+sum(is.na(info.to.add.DF$METER_NUMBER))
+sum(is.na(info.to.add.DF$STATE_CODE))
+sum(is.na(info.to.add.DF$TOWN_CODE))
+sum(is.na(info.to.add.DF$Date))
+sum(is.na(info.to.add.DF$Date..DST))
+sum(is.na(info.to.add.DF$Wk.Day))
+sum(is.na(info.to.add.DF$Wk.Day.Num))
+sum(is.na(info.to.add.DF$Julian_Day))
+sum(is.na(info.to.add.DF$Month))
+sum(is.na(info.to.add.DF$Day))
+sum(is.na(info.to.add.DF$Year))
+sum(is.na(info.to.add.DF$Numeric_Time))
+sum(is.na(info.to.add.DF$Hour))
+sum(is.na(info.to.add.DF$TMP))
+sum(is.na(info.to.add.DF$WSP))
+sum(is.na(info.to.add.DF$WDR))
+sum(is.na(info.to.add.DF$READ_FREQUENCY))
+sum(is.na(info.to.add.DF$READ_VALUE))
+sum(is.na(info.to.add.DF$UOM))
+sum(is.na(info.to.add.DF$Watts))
+sum(is.na(info.to.add.DF$Day_Max))
+sum(is.na(info.to.add.DF$Prop_Day_Max))
+sum(is.na(info.to.add.DF$ISO.tot.dmd))
+sum(is.na(info.to.add.DF$NH.RT.MWh))
+sum(is.na(info.to.add.DF$UES.Cap))
+sum(is.na(info.to.add.DF$UES.Sea))
+sum(is.na(info.to.add.DF$LMP.DA.NH))
+sum(is.na(info.to.add.DF$LMP.RT.NH))
+
+```
+
+```{r}
+### Fill NA values caused by DST (verify from previous chunk that DST NA's are all there are).
+library(zoo)
+
+info.to.add.DF$ISO.tot.dmd <- na.approx(info.to.add.DF$ISO.tot.dmd, rule = 2)
+info.to.add.DF$NH.RT.MWh <- na.approx(info.to.add.DF$NH.RT.MWh, rule = 2)
+info.to.add.DF$UES.Cap <- na.approx(info.to.add.DF$UES.Cap, rule = 2)
+info.to.add.DF$UES.Sea <- na.approx(info.to.add.DF$UES.Sea, rule = 2)
+info.to.add.DF$LMP.DA.NH <- na.approx(info.to.add.DF$LMP.DA.NH, rule = 2)
+info.to.add.DF$LMP.RT.NH <- na.approx(info.to.add.DF$LMP.RT.NH, rule = 2)
+
+```
+
+
+```{r}
+# Verify that there are no longer any NA values
+sum(is.na(info.to.add.DF$METER_NUMBER))
+sum(is.na(info.to.add.DF$STATE_CODE))
+sum(is.na(info.to.add.DF$TOWN_CODE))
+sum(is.na(info.to.add.DF$Date))
+sum(is.na(info.to.add.DF$Date..DST))
+sum(is.na(info.to.add.DF$Wk.Day))
+sum(is.na(info.to.add.DF$Wk.Day.Num))
+sum(is.na(info.to.add.DF$Julian_Day))
+sum(is.na(info.to.add.DF$Month))
+sum(is.na(info.to.add.DF$Day))
+sum(is.na(info.to.add.DF$Year))
+sum(is.na(info.to.add.DF$Numeric_Time))
+sum(is.na(info.to.add.DF$Hour))
+sum(is.na(info.to.add.DF$TMP))
+sum(is.na(info.to.add.DF$WSP))
+sum(is.na(info.to.add.DF$WDR))
+sum(is.na(info.to.add.DF$READ_FREQUENCY))
+sum(is.na(info.to.add.DF$READ_VALUE))
+sum(is.na(info.to.add.DF$UOM))
+sum(is.na(info.to.add.DF$Watts))
+sum(is.na(info.to.add.DF$Day_Max))
+sum(is.na(info.to.add.DF$Prop_Day_Max))
+sum(is.na(info.to.add.DF$ISO.tot.dmd))
+sum(is.na(info.to.add.DF$NH.RT.MWh))
+sum(is.na(info.to.add.DF$UES.Cap))
+sum(is.na(info.to.add.DF$UES.Sea))
+sum(is.na(info.to.add.DF$LMP.DA.NH))
+sum(is.na(info.to.add.DF$LMP.RT.NH))
+
+rm(na.values)
+```
+
+```{r}
+### Write out a .csv of relevant info for machine learning
+
+# Create a copy of info.to.add.DF 
+copy.DF <- info.to.add.DF
+# copy.DF <- copy.DF[copy.DF$Prop_Day_Max == 1, ]
+
+# Filter if you only want hourly data
+copy.DF <- copy.DF[copy.DF$Numeric_Time == 0.00 | copy.DF$Numeric_Time == 12.00 |
+                     copy.DF$Numeric_Time == 1.00 | copy.DF$Numeric_Time == 13.00 |
+                     copy.DF$Numeric_Time == 2.00 | copy.DF$Numeric_Time == 14.00 |
+                     copy.DF$Numeric_Time == 3.00 | copy.DF$Numeric_Time == 15.00 |
+                     copy.DF$Numeric_Time == 4.00 | copy.DF$Numeric_Time == 16.00 |
+                     copy.DF$Numeric_Time == 5.00 | copy.DF$Numeric_Time == 17.00 |
+                     copy.DF$Numeric_Time == 6.00 | copy.DF$Numeric_Time == 18.00 |
+                     copy.DF$Numeric_Time == 7.00 | copy.DF$Numeric_Time == 19.00 |
+                     copy.DF$Numeric_Time == 8.00 | copy.DF$Numeric_Time == 20.00 |
+                     copy.DF$Numeric_Time == 9.00 | copy.DF$Numeric_Time == 21.00 |
+                     copy.DF$Numeric_Time == 10.00 | copy.DF$Numeric_Time == 22.00 |
+                     copy.DF$Numeric_Time == 11.00 | copy.DF$Numeric_Time == 23.00, ]
+
+### Add desired predictors to dataframe
+ML.DF <- data.frame("Wk.Day" = copy.DF$Wk.Day)
+ML.DF$Month <- copy.DF$Month
+ML.DF$Day <- copy.DF$Day
+ML.DF$Year <- copy.DF$Year
+ML.DF$Numeric_Time <- copy.DF$Numeric_Time
+ML.DF$TMP <- copy.DF$TMP
+ML.DF$WSP <- copy.DF$WSP
+ML.DF$WDR <- copy.DF$WDR
+ML.DF$ISO.tot.dmd <- copy.DF$ISO.tot.dmd
+ML.DF$NH.RT.MWh <- copy.DF$NH.RT.MWh
+ML.DF$UES.Cap <- copy.DF$UES.Cap
+ML.DF$UES.Sea <- copy.DF$UES.Sea
+ML.DF$LMP.RT.NH <- copy.DF$LMP.RT.NH
+
+### Add target variable to dataframe - Choose one of below
+# ML.DF$Target <- copy.DF$READ_VALUE
+# ML.DF$UES.Cap <- copy.DF$UES.Cap
+# ML.DF$UES.Sea <- copy.DF$UES.Sea
+
+### Additional filtering for certain values if desired
+# ML.DF <- ML.DF[ML.DF$Watts > 0 & ML.DF$Watts < 600, ]
+# ML.DF <- ML.DF[ML.DF$Target > 0, ]
+
+### Summary of dataframe
+summary(ML.DF$Target)
+
+### Write out .csv if desired
+# write.csv(ML.DF, file = 'ML_data - predict UES.csv', row.names = FALSE)
+
+```
+
+
+
+```{r}
+plot(x = info.to.add.DF$Numeric_Time, y = info.to.add.DF$READ_VALUE)
+```
+
+```{r}
+plot(x = info.to.add.DF$Numeric_Time, y = info.to.add.DF$Prop.Day.Max)
+```
+
+```{r}
+hist(info.to.add.DF$Prop.Day.Max)
+
+```
+
+
+
+```{r}
+# Histogram of times of max use using ggplot2
+library(ggplot2)
+
+### Copy info.to.add.DF to prepare for subsetting
+max_times <- info.to.add.DF
+
+### Adjust what 'proportion of daily max' magnitude should be included
+max_times <- max_times[max_times$Prop.Day.Max > 0.8, ]  
+
+ggplot(data=max_times, aes(max_times$Hour)) +
+  geom_histogram(binwidth = 1,
+                 col='black',
+                 fill='blue',
+                 alpha = 1.0) +
+  labs(title = "Histogram of Max Usage Hour of Occurance") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Hour", y = "Count")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

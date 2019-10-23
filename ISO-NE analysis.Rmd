@@ -1,0 +1,890 @@
+---
+title: "ISO-NE Data Analysis"
+author: "Ben Payeur"
+date: "September 28, 2019"
+output: html_document
+---
+
+```{r}
+# Set working directory and read in data
+
+setwd("C:/Users/payeurb/Desktop/Projects/TOU pilot/DS 502 Project/ISO data/CMARS")
+
+# ISO System Demand data - 5 minute and hourly
+ISO.Dmd.5min <- read.csv('UNITIL-ES-ISO_SYSTEM_DEMAND_5MINUTE-20190927142653-52657.csv', header =TRUE)
+ISO.Dmd.hour <- read.csv('UNITIL-ES-ISO_SYSTEM_DEMAND-20190927142303-36297.csv', header = TRUE)
+
+# LMP's - Real Time and Day Ahead
+LMP.RT <- read.csv('UNITIL-ES-LMP_RT-20190927135549-70605.csv', header = TRUE)
+LMP.DA <- read.csv('UNITIL-ES-LMP_DA-20190927140144-92264.csv', header = TRUE)
+
+# Unitil system loads - Concord and Seacoast
+UES.Cap <- read.csv('UNITIL-ES-SP_METERDOMAIN-20190927145441-32691.csv', header = TRUE)
+UES.Sea <- read.csv('UNITIL-ES-SP_METERDOMAIN-20190927145754-75058.csv', header = TRUE)
+
+# ISO-NE zonal loads (load territories by state, but Mass has 3 territories)
+ISO.zones <- read.csv('UNITIL-ES-ZONAL_LOADS-20190927143257-69974.csv', header = TRUE)
+
+### Interchange data not used for now - what would we use it for?
+# interchg.act <- read.csv('UNITIL-ES-ISO_INTERCHANGE_ACTUAL-20190927143931-57339.csv', header = TRUE)
+# interchg.for <- read.csv('UNITIL-ES-ISO_INTERCHANGE_FORECAST-20190927144149-82404.csv', header = TRUE)
+```
+
+
+```{r}
+### Real time LMPs - split dates into numeric month, day, year 
+
+library(stringr)
+library(tibble)
+
+# Perform split of dates
+split.date <- data.frame(str_split_fixed(LMP.RT$Settlement.Date, '/', n=3))
+names(split.date) <- c('Month', 'Day', 'Year')
+
+# Check what the data class is for the newly split data
+data.class(split.date$Month)
+data.class(split.date$Day)
+data.class(split.date$Year)
+
+# See the unique levels if data class is 'factor'
+levels(split.date$Month)
+levels(split.date$Day)
+levels(split.date$Year)
+
+# Convert Month, Day, Year from factor to numeric
+split.date$Month <- as.numeric(levels(split.date$Month))[split.date$Month]  
+split.date$Day <- as.numeric(levels(split.date$Day))[split.date$Day]
+split.date$Year <- as.numeric(levels(split.date$Year))[split.date$Year]
+
+# Add numeric Month, Day, Year to real time LMP dataframe
+LMP.RT <- add_column(LMP.RT, 'Month'=split.date$Month, 'Day'=split.date$Day, 'Year'=split.date$Year,
+                     .after = LMP.RT$Settlement.Date)
+
+# Verify that Month, Day, Year data is numeric
+data.class(LMP.RT$Month)
+data.class(LMP.RT$Day)
+data.class(LMP.RT$Year)
+
+# Double check that Month, Day, Year data has correct unique values
+unique(LMP.RT$Month)
+unique(LMP.RT$Day)
+unique(LMP.RT$Year)
+
+# Check to see if there are any missing values in Month, Day, Year
+sum(is.na(LMP.RT$Month))
+sum(is.na(LMP.RT$Day))
+sum(is.na(LMP.RT$Year))
+
+rm(split.date)
+
+```
+
+
+```{r}
+### Day ahead LMPs - split dates into numeric month, day, year 
+
+library(stringr)
+library(tibble)
+
+# Perform split of dates
+split.date <- data.frame(str_split_fixed(LMP.DA$Settlement.Date, '/', n=3))
+names(split.date) <- c('Month', 'Day', 'Year')
+
+# Check what the data class is for the newly split data
+data.class(split.date$Month)
+data.class(split.date$Day)
+data.class(split.date$Year)
+
+# See the unique levels if data class is 'factor'
+levels(split.date$Month)
+levels(split.date$Day)
+levels(split.date$Year)
+
+# Convert Month, Day, Year from factor to numeric
+split.date$Month <- as.numeric(levels(split.date$Month))[split.date$Month]  
+split.date$Day <- as.numeric(levels(split.date$Day))[split.date$Day]
+split.date$Year <- as.numeric(levels(split.date$Year))[split.date$Year]
+
+# Add numeric Month, Day, Year to day ahead LMP dataframe
+LMP.DA <- add_column(LMP.DA, 'Month'=split.date$Month, 'Day'=split.date$Day, 'Year'=split.date$Year,
+                     .after = LMP.DA$Settlement.Date)
+
+# Verify that Month, Day, Year data is numeric
+data.class(LMP.DA$Month)
+data.class(LMP.DA$Day)
+data.class(LMP.DA$Year)
+
+# Double check that Month, Day, Year data has correct unique values
+unique(LMP.DA$Month)
+unique(LMP.DA$Day)
+unique(LMP.DA$Year)
+
+# Check to see if there are any missing values in Month, Day, Year
+sum(is.na(LMP.DA$Month))
+sum(is.na(LMP.DA$Day))
+sum(is.na(LMP.DA$Year))
+
+rm(split.date)
+
+```
+
+```{r}
+### UES Capitol demand - split dates into numeric month, day, year 
+
+library(stringr)
+library(tibble)
+
+# Perform split of dates
+split.date <- data.frame(str_split_fixed(UES.Cap$Settlement.Date, '/', n=3))
+names(split.date) <- c('Month', 'Day', 'Year')
+
+# Check what the data class is for the newly split data
+data.class(split.date$Month)
+data.class(split.date$Day)
+data.class(split.date$Year)
+
+# See the unique levels if data class is 'factor'
+levels(split.date$Month)
+levels(split.date$Day)
+levels(split.date$Year)
+
+# Convert Month, Day, Year from factor to numeric
+split.date$Month <- as.numeric(levels(split.date$Month))[split.date$Month]  
+split.date$Day <- as.numeric(levels(split.date$Day))[split.date$Day]
+split.date$Year <- as.numeric(levels(split.date$Year))[split.date$Year]
+
+# Add numeric Month, Day, Year to UES capitol dataframe
+UES.Cap <- add_column(UES.Cap, 'Month'=split.date$Month, 'Day'=split.date$Day, 'Year'=split.date$Year,
+                     .after = UES.Cap$Settlement.Date)
+
+# Verify that Month, Day, Year data is numeric
+data.class(UES.Cap$Month)
+data.class(UES.Cap$Day)
+data.class(UES.Cap$Year)
+
+# Double check that Month, Day, Year data has correct unique values
+unique(UES.Cap$Month)
+unique(UES.Cap$Day)
+unique(UES.Cap$Year)
+
+# Check to see if there are any missing values in Month, Day, Year
+sum(is.na(UES.Cap$Month))
+sum(is.na(UES.Cap$Day))
+sum(is.na(UES.Cap$Year))
+
+rm(split.date)
+
+```
+
+
+```{r}
+### UES Seacoast demand - split dates into numeric month, day, year 
+
+library(stringr)
+library(tibble)
+
+# Perform split of dates
+split.date <- data.frame(str_split_fixed(UES.Sea$Settlement.Date, '/', n=3))
+names(split.date) <- c('Month', 'Day', 'Year')
+
+# Check what the data class is for the newly split data
+data.class(split.date$Month)
+data.class(split.date$Day)
+data.class(split.date$Year)
+
+# See the unique levels if data class is 'factor'
+levels(split.date$Month)
+levels(split.date$Day)
+levels(split.date$Year)
+
+# Convert Month, Day, Year from factor to numeric
+split.date$Month <- as.numeric(levels(split.date$Month))[split.date$Month]  
+split.date$Day <- as.numeric(levels(split.date$Day))[split.date$Day]
+split.date$Year <- as.numeric(levels(split.date$Year))[split.date$Year]
+
+# Add numeric Month, Day, Year to UES Seacoast dataframe
+UES.Sea <- add_column(UES.Sea, 'Month'=split.date$Month, 'Day'=split.date$Day, 'Year'=split.date$Year,
+                     .after = UES.Sea$Settlement.Date)
+
+# Verify that Month, Day, Year data is numeric
+data.class(UES.Sea$Month)
+data.class(UES.Sea$Day)
+data.class(UES.Sea$Year)
+
+# Double check that Month, Day, Year data has correct unique values
+unique(UES.Sea$Month)
+unique(UES.Sea$Day)
+unique(UES.Sea$Year)
+
+# Check to see if there are any missing values in Month, Day, Year
+sum(is.na(UES.Sea$Month))
+sum(is.na(UES.Sea$Day))
+sum(is.na(UES.Sea$Year))
+
+rm(split.date)
+
+```
+
+
+```{r}
+### ISO-NE 5-min demand - split dates into numeric month, day, year 
+
+library(stringr)
+library(tibble)
+
+# Perform split of dates
+split.date <- data.frame(str_split_fixed(ISO.Dmd.5min$Settlement.Date, '/', n=3))
+names(split.date) <- c('Month', 'Day', 'Year')
+
+# Check what the data class is for the newly split data
+data.class(split.date$Month)
+data.class(split.date$Day)
+data.class(split.date$Year)
+
+# See the unique levels if data class is 'factor'
+levels(split.date$Month)
+levels(split.date$Day)
+levels(split.date$Year)
+
+# Convert Month, Day, Year from factor to numeric
+split.date$Month <- as.numeric(levels(split.date$Month))[split.date$Month]  
+split.date$Day <- as.numeric(levels(split.date$Day))[split.date$Day]
+split.date$Year <- as.numeric(levels(split.date$Year))[split.date$Year]
+
+# Add numeric Month, Day, Year to ISO-NE 5-min demand dataframe
+ISO.Dmd.5min <- add_column(ISO.Dmd.5min, 'Month'=split.date$Month, 'Day'=split.date$Day,
+                           'Year'=split.date$Year, .after = ISO.Dmd.5min$Settlement.Date)
+
+# Verify that Month, Day, Year data is numeric
+data.class(ISO.Dmd.5min$Month)
+data.class(ISO.Dmd.5min$Day)
+data.class(ISO.Dmd.5min$Year)
+
+# Double check that Month, Day, Year data has correct unique values
+unique(ISO.Dmd.5min$Month)
+unique(ISO.Dmd.5min$Day)
+unique(ISO.Dmd.5min$Year)
+
+# Check to see if there are any missing values in Month, Day, Year
+sum(is.na(ISO.Dmd.5min$Month))
+sum(is.na(ISO.Dmd.5min$Day))
+sum(is.na(ISO.Dmd.5min$Year))
+
+rm(split.date)
+
+```
+
+
+```{r}
+### ISO-NE hourly demand - split dates into numeric month, day, year 
+
+library(stringr)
+library(tibble)
+
+# Perform split of dates
+split.date <- data.frame(str_split_fixed(ISO.Dmd.hour$Settlement.Date, '/', n=3))
+names(split.date) <- c('Month', 'Day', 'Year')
+
+# Check what the data class is for the newly split data
+data.class(split.date$Month)
+data.class(split.date$Day)
+data.class(split.date$Year)
+
+# See the unique levels if data class is 'factor'
+levels(split.date$Month)
+levels(split.date$Day)
+levels(split.date$Year)
+
+# Convert Month, Day, Year from factor to numeric
+split.date$Month <- as.numeric(levels(split.date$Month))[split.date$Month]  
+split.date$Day <- as.numeric(levels(split.date$Day))[split.date$Day]
+split.date$Year <- as.numeric(levels(split.date$Year))[split.date$Year]
+
+# Add numeric Month, Day, Year to ISO-NE hourly demand dataframe
+ISO.Dmd.hour <- add_column(ISO.Dmd.hour, 'Month'=split.date$Month, 'Day'=split.date$Day,
+                           'Year'=split.date$Year, .after = ISO.Dmd.hour$Settlement.Date)
+
+# Verify that Month, Day, Year data is numeric
+data.class(ISO.Dmd.hour$Month)
+data.class(ISO.Dmd.hour$Day)
+data.class(ISO.Dmd.hour$Year)
+
+# Double check that Month, Day, Year data has correct unique values
+unique(ISO.Dmd.hour$Month)
+unique(ISO.Dmd.hour$Day)
+unique(ISO.Dmd.hour$Year)
+
+# Check to see if there are any missing values in Month, Day, Year
+sum(is.na(ISO.Dmd.hour$Month))
+sum(is.na(ISO.Dmd.hour$Day))
+sum(is.na(ISO.Dmd.hour$Year))
+
+rm(split.date)
+
+```
+
+
+```{r}
+### ISO-NE zonal loads - split dates into numeric month, day, year 
+
+library(stringr)
+library(tibble)
+
+# Perform split of dates
+split.date <- data.frame(str_split_fixed(ISO.zones$Settlement.Date, '/', n=3))
+names(split.date) <- c('Month', 'Day', 'Year')
+
+# Check what the data class is for the newly split data
+data.class(split.date$Month)
+data.class(split.date$Day)
+data.class(split.date$Year)
+
+# See the unique levels if data class is 'factor'
+levels(split.date$Month)
+levels(split.date$Day)
+levels(split.date$Year)
+
+# Convert Month, Day, Year from factor to numeric
+split.date$Month <- as.numeric(levels(split.date$Month))[split.date$Month]  
+split.date$Day <- as.numeric(levels(split.date$Day))[split.date$Day]
+split.date$Year <- as.numeric(levels(split.date$Year))[split.date$Year]
+
+# Add numeric Month, Day, Year to ISO-NE zonal loads dataframe
+ISO.zones <- add_column(ISO.zones, 'Month'=split.date$Month, 'Day'=split.date$Day,
+                           'Year'=split.date$Year, .after = ISO.zones$Settlement.Date)
+
+# Verify that Month, Day, Year data is numeric
+data.class(ISO.zones$Month)
+data.class(ISO.zones$Day)
+data.class(ISO.zones$Year)
+
+# Double check that Month, Day, Year data has correct unique values
+unique(ISO.zones$Month)
+unique(ISO.zones$Day)
+unique(ISO.zones$Year)
+
+# Check to see if there are any missing values in Month, Day, Year
+sum(is.na(ISO.zones$Month))
+sum(is.na(ISO.zones$Day))
+sum(is.na(ISO.zones$Year))
+
+rm(split.date)
+
+```
+
+
+```{r}
+### Filter dataframes to include 2010-2018 data only
+
+ISO.Dmd.5min <- ISO.Dmd.5min[ISO.Dmd.5min$Year != 2019, ]
+ISO.Dmd.hour <- ISO.Dmd.hour[ISO.Dmd.hour$Year != 2019, ]
+ISO.zones <- ISO.zones[ISO.zones$Year != 2019, ]
+LMP.DA <- LMP.DA[LMP.DA$Year != 2019, ]
+LMP.RT <- LMP.RT[LMP.RT$Year != 2019, ]
+UES.Cap <- UES.Cap[UES.Cap$Year != 2019, ]
+UES.Sea <- UES.Sea[UES.Sea$Year != 2019, ]
+
+# Create new dataframe for each ISO-NE zone
+zone.hub <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4000, ]
+zone.ME <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4001, ]
+zone.NH <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4002, ]
+zone.VT <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4003, ]
+zone.CT <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4004, ]
+zone.RI <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4005, ]
+zone.MA.SE <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4006, ]
+zone.MA.WC <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4007, ]
+zone.MA.NE <- ISO.zones[ISO.zones$Year != 2019 & ISO.zones$Location.ID == 4008, ]
+
+### What is the correct number of hours for 2010-2018 (9 years)?
+# Leap years are 2008, 2012, 2016, 2020, 2024 (so this data includes two leap years for 2012, 2016)
+print(paste("The number of hours from 2010-2018 is:", 365*24*9 + 24*2))
+
+```
+
+
+```{r}
+### Do all date and hour columns match for the hourly dataframes?  
+### If no, where is there mismatch?
+
+# Day-ahead LMP vs. Real-time LMP
+all(LMP.DA$Month == LMP.RT$Month)
+all(LMP.DA$Day == LMP.RT$Day)
+all(LMP.DA$Year == LMP.RT$Year)
+all(LMP.DA$TI == LMP.RT$TI)
+
+# Day-ahead LMP vs. UES Capitol
+all(LMP.DA$Month == UES.Cap$Month)
+all(LMP.DA$Day == UES.Cap$Day)
+all(LMP.DA$Year == UES.Cap$Year)
+all(LMP.DA$TI == UES.Cap$TI)
+
+# Day-ahead LMP vs. UES Seacoast
+all(LMP.DA$Month == UES.Sea$Month)
+all(LMP.DA$Day == UES.Sea$Day)
+all(LMP.DA$Year == UES.Sea$Year)
+all(LMP.DA$TI == UES.Sea$TI)
+
+# Day-ahead LMP vs. Connecticut load zone
+all(LMP.DA$Month == zone.CT$Month)
+all(LMP.DA$Day == zone.CT$Day)
+all(LMP.DA$Year == zone.CT$Year)
+all(LMP.DA$TI == zone.CT$TI)
+
+# Day-ahead LMP vs. Northeast MA load zone
+all(LMP.DA$Month == zone.MA.NE$Month)
+all(LMP.DA$Day == zone.MA.NE$Day)
+all(LMP.DA$Year == zone.MA.NE$Year)
+all(LMP.DA$TI == zone.MA.NE$TI)
+
+# Day-ahead LMP vs. Southeast MA load zone
+all(LMP.DA$Month == zone.MA.SE$Month)
+all(LMP.DA$Day == zone.MA.SE$Day)
+all(LMP.DA$Year == zone.MA.SE$Year)
+all(LMP.DA$TI == zone.MA.SE$TI)
+
+# Day-ahead LMP vs. Western Central MA load zone
+all(LMP.DA$Month == zone.MA.WC$Month)
+all(LMP.DA$Day == zone.MA.WC$Day)
+all(LMP.DA$Year == zone.MA.WC$Year)
+all(LMP.DA$TI == zone.MA.WC$TI)
+
+# Day-ahead LMP vs. Maine load zone
+all(LMP.DA$Month == zone.ME$Month)
+all(LMP.DA$Day == zone.ME$Day)
+all(LMP.DA$Year == zone.ME$Year)
+all(LMP.DA$TI == zone.ME$TI)
+
+# Day-ahead LMP vs. New Hampshire load zone
+all(LMP.DA$Month == zone.NH$Month)
+all(LMP.DA$Day == zone.NH$Day)
+all(LMP.DA$Year == zone.NH$Year)
+all(LMP.DA$TI == zone.NH$TI)
+
+# Day-ahead LMP vs. Rhode Island load zone
+all(LMP.DA$Month == zone.RI$Month)
+all(LMP.DA$Day == zone.RI$Day)
+all(LMP.DA$Year == zone.RI$Year)
+all(LMP.DA$TI == zone.RI$TI)
+
+# Day-ahead LMP vs. Vermont load zone
+all(LMP.DA$Month == zone.VT$Month)
+all(LMP.DA$Day == zone.VT$Day)
+all(LMP.DA$Year == zone.VT$Year)
+all(LMP.DA$TI == zone.VT$TI)
+
+```
+
+
+```{r}
+### Do all date and hour columns match for the hourly dataframes?  
+### If no, where is there mismatch?
+
+# Day-ahead LMP vs. hub load zone
+all(LMP.DA$Month == zone.hub$Month)
+all(LMP.DA$Day == zone.hub$Day)
+all(LMP.DA$Year == zone.hub$Year)
+all(LMP.DA$TI == zone.hub$TI)
+
+# Day-ahead LMP vs. hourly ISO demand
+all(LMP.DA$Month == ISO.Dmd.hour$Month)
+all(LMP.DA$Day == ISO.Dmd.hour$Day)
+all(LMP.DA$Year == ISO.Dmd.hour$Year)
+all(LMP.DA$TI == ISO.Dmd.hour$TI)
+
+```
+
+```{r}
+### Add new rows to align dates & times
+### NOTE: AFTER FIGURING OUT WHERE TO ADD ROWS, YOU CAN DELETE ALL THE 'head(zzISO.Dmd.hour, -1)'
+
+zzISO.Dmd.hour <- ISO.Dmd.hour
+
+# Before adding any new rows, first mismatch shows up at row 5659 / 5660
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "08/24/2010", "Month" = 8,
+                          "Day" = 24, "Year" = 2010, "TI" = "21", "Total.Demand" = NA,
+                          .after = 5659)
+
+# After adding previous row, next mismatch shows up at row 43128 / 43129
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "12/03/2014", "Month" = 12,
+                          "Day" = 3, "Year" = 2014, "TI" = "01", "Total.Demand" = NA,
+                          .after = 43128)
+
+# After adding previous row, next mismatch shows up at row 45959 / 45960
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "03/31/2015", "Month" = 3,
+                          "Day" = 31, "Year" = 2015, "TI" = "01", "Total.Demand" = NA,
+                          .after = 45959)
+
+# After adding previous row, next mismatch shows up at row 47198 / 47199
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "05/21/2015", "Month" = 5,
+                          "Day" = 21, "Year" = 2015, "TI" = "16", "Total.Demand" = NA,
+                          .after = 47198)
+
+# After adding previous row, next mismatch shows up at row 56055 / 56056
+# NOTE: In this case, THREE hours are missing
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "05/24/2016", "Month" = 5,
+                          "Day" = 24, "Year" = 2016, "TI" = "17", "Total.Demand" = NA,
+                          .after = 56055)
+
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "05/24/2016", "Month" = 5,
+                          "Day" = 24, "Year" = 2016, "TI" = "18", "Total.Demand" = NA,
+                          .after = 56056)
+
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "05/24/2016", "Month" = 5,
+                          "Day" = 24, "Year" = 2016, "TI" = "19", "Total.Demand" = NA,
+                          .after = 56057)
+
+# After adding previous rows, next mismatch shows up at row 67645 / 67646
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "09/19/2017", "Month" = 9,
+                          "Day" = 19, "Year" = 2017, "TI" = "15", "Total.Demand" = NA,
+                          .after = 67645)
+
+# After adding previous row, next mismatch shows up at row 67647 / 67648
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "09/19/2017", "Month" = 9,
+                          "Day" = 19, "Year" = 2017, "TI" = "17", "Total.Demand" = NA,
+                          .after = 67647)
+
+# After adding previous row, next mismatch shows up at row 71005 / 71006
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "02/06/2018", "Month" = 2,
+                          "Day" = 6, "Year" = 2018, "TI" = "14", "Total.Demand" = NA,
+                          .after = 71005)
+
+# After adding previous row, next mismatch shows up at row 71678 / 71679
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "03/06/2018", "Month" = 3,
+                          "Day" = 6, "Year" = 2018, "TI" = "15", "Total.Demand" = NA,
+                          .after = 71678)
+
+### Next mismatch comes because there was a value added during a 'spring ahead' hour.
+### Remove this hour, add NA to end of dataframe
+zzISO.Dmd.hour <- zzISO.Dmd.hour[-c(71786), ] 
+
+# After removing previous row, next mismatch shows up at row 73703 / 73704
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "05/30/2018", "Month" = 5,
+                          "Day" = 30, "Year" = 2018, "TI" = "01", "Total.Demand" = NA,
+                          .after = 73703)
+
+# After adding previous row, next mismatch shows up at row 74244 / 74245
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "06/21/2018", "Month" = 6,
+                          "Day" = 21, "Year" = 2018, "TI" = "14", "Total.Demand" = NA,
+                          .after = 74244)
+
+# After adding previous row, next mismatch shows up at row 76215 / 76216
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "09/11/2018", "Month" = 9,
+                          "Day" = 11, "Year" = 2018, "TI" = "17", "Total.Demand" = NA,
+                          .after = 76215)
+
+# After adding previous row, next mismatch shows up at row 76679 / 76680
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "10/01/2018", "Month" = 10,
+                          "Day" = 1, "Year" = 2018, "TI" = "01", "Total.Demand" = NA,
+                          .after = 76679)
+
+# After adding previous row, next mismatch shows up at row 77496 / 77497
+# NOTE: In this case, TWO entries are missing ('Fall back' day; both 'Hour 2' are missing)
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "11/04/2018", "Month" = 11,
+                          "Day" = 4, "Year" = 2018, "TI" = "02", "Total.Demand" = NA,
+                          .after = 77496)
+
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "11/04/2018", "Month" = 11,
+                          "Day" = 4, "Year" = 2018, "TI" = "02*", "Total.Demand" = NA,
+                          .after = 77497)
+
+# After adding previous rows, next mismatch shows up at row 77750 / 77751
+zzISO.Dmd.hour <- add_row(zzISO.Dmd.hour, "Settlement.Date" = "11/14/2018", "Month" = 11,
+                          "Day" = 14, "Year" = 2018, "TI" = "15", "Total.Demand" = NA,
+                          .after = 77750)
+
+### Write out a .csv of cleaned hourly ISO-NE data
+# write.csv(zzISO.Dmd.hour, file = 'Cleaned_Data1.csv', row.names = FALSE)
+
+```
+
+
+```{r}
+# Time stamping of hourly ISO demand vs. all the rest of the dataframes
+# If previous chunk worked, these should all return 'TRUE'
+all(LMP.DA$Month == zzISO.Dmd.hour$Month)
+all(LMP.DA$Day == zzISO.Dmd.hour$Day)
+all(LMP.DA$Year == zzISO.Dmd.hour$Year)
+all(LMP.DA$TI == zzISO.Dmd.hour$TI)
+
+all(zzISO.Dmd.hour$Month == LMP.RT$Month)
+all(zzISO.Dmd.hour$Day == LMP.RT$Day)
+all(zzISO.Dmd.hour$Year == LMP.RT$Year)
+all(zzISO.Dmd.hour$TI == LMP.RT$TI)
+
+all(zzISO.Dmd.hour$Month == UES.Cap$Month)
+all(zzISO.Dmd.hour$Day == UES.Cap$Day)
+all(zzISO.Dmd.hour$Year == UES.Cap$Year)
+all(zzISO.Dmd.hour$TI == UES.Cap$TI)
+
+all(zzISO.Dmd.hour$Month == UES.Sea$Month)
+all(zzISO.Dmd.hour$Day == UES.Sea$Day)
+all(zzISO.Dmd.hour$Year == UES.Sea$Year)
+all(zzISO.Dmd.hour$TI == UES.Sea$TI)
+
+all(zzISO.Dmd.hour$Month == zone.CT$Month)
+all(zzISO.Dmd.hour$Day == zone.CT$Day)
+all(zzISO.Dmd.hour$Year == zone.CT$Year)
+all(zzISO.Dmd.hour$TI == zone.CT$TI)
+
+all(zzISO.Dmd.hour$Month == zone.MA.NE$Month)
+all(zzISO.Dmd.hour$Day == zone.MA.NE$Day)
+all(zzISO.Dmd.hour$Year == zone.MA.NE$Year)
+all(zzISO.Dmd.hour$TI == zone.MA.NE$TI)
+
+all(zzISO.Dmd.hour$Month == zone.MA.SE$Month)
+all(zzISO.Dmd.hour$Day == zone.MA.SE$Day)
+all(zzISO.Dmd.hour$Year == zone.MA.SE$Year)
+all(zzISO.Dmd.hour$TI == zone.MA.SE$TI)
+
+all(zzISO.Dmd.hour$Month == zone.MA.WC$Month)
+all(zzISO.Dmd.hour$Day == zone.MA.WC$Day)
+all(zzISO.Dmd.hour$Year == zone.MA.WC$Year)
+all(zzISO.Dmd.hour$TI == zone.MA.WC$TI)
+
+all(zzISO.Dmd.hour$Month == zone.ME$Month)
+all(zzISO.Dmd.hour$Day == zone.ME$Day)
+all(zzISO.Dmd.hour$Year == zone.ME$Year)
+all(zzISO.Dmd.hour$TI == zone.ME$TI)
+
+all(zzISO.Dmd.hour$Month == zone.NH$Month)
+all(zzISO.Dmd.hour$Day == zone.NH$Day)
+all(zzISO.Dmd.hour$Year == zone.NH$Year)
+all(zzISO.Dmd.hour$TI == zone.NH$TI)
+
+all(zzISO.Dmd.hour$Month == zone.RI$Month)
+all(zzISO.Dmd.hour$Day == zone.RI$Day)
+all(zzISO.Dmd.hour$Year == zone.RI$Year)
+all(zzISO.Dmd.hour$TI == zone.RI$TI)
+
+all(zzISO.Dmd.hour$Month == zone.VT$Month)
+all(zzISO.Dmd.hour$Day == zone.VT$Day)
+all(zzISO.Dmd.hour$Year == zone.VT$Year)
+all(zzISO.Dmd.hour$TI == zone.VT$TI)
+```
+
+
+```{r}
+### THIS CHUNK WAS USED TO HELP FIND MISMATCHES BETWEEN ISO SYSTEM DEMAND TIMESTAMPING
+### AND LMP TIMESTAMPING. IF RUN NOW, THE DATAFRAMES IT CREATES SHOULD BE EMPTY
+### (EXCEPT FOR COMPARISON DATAFRAME zTest)
+
+### Add NA's to hourly ISO demand dataframe so column lengths match other dataframes
+# zzNA <- data.frame(matrix(NA, nrow = 17, ncol = 6))
+# names(zzNA) <- names(ISO.Dmd.hour)
+# 
+# zzISO.Dmd.hour <- rbind(ISO.Dmd.hour, zzNA)
+# rm(zzNA)
+
+# zTest <- data.frame('Settlement.Date.LMP' = LMP.DA$Settlement.Date)
+# zTest$Settlement.Date.ISO <- zzISO.Dmd.hour$Settlement.Date 
+# 
+# # Do months match?
+# zTest$Month.LMP <- LMP.DA$Month
+# zTest$Month.ISO <- zzISO.Dmd.hour$Month
+# zTest$Month.Match <- (zTest$Month.LMP == zTest$Month.ISO)
+# 
+# # Do days match?
+# zTest$Day.LMP <- LMP.DA$Day
+# zTest$Day.ISO <- zzISO.Dmd.hour$Day
+# zTest$Day.Match <- (zTest$Day.LMP == zTest$Day.ISO)
+# 
+# # Do years match?
+# zTest$Year.LMP <- LMP.DA$Year
+# zTest$Year.ISO <- zzISO.Dmd.hour$Year
+# zTest$Year.Match <- (zTest$Year.LMP == zTest$Year.ISO)
+# 
+# # Do TI's match?
+# zTest$TI.LMP <- LMP.DA$TI
+# zTest$TI.ISO <- zzISO.Dmd.hour$TI
+# zTest$TI.Match <- (zTest$TI.LMP == zTest$TI.ISO)
+# 
+# # Find where there is mismatch - THESE SHOULD BE EMPTY ONCE DATA MATCHES
+# zzzMonth.Mismatch <- zTest[zTest$Month.Match == FALSE, ]
+# zzzDay.Mismatch <- zTest[zTest$Day.Match == FALSE, ]
+# zzzYear.Mismatch <- zTest[zTest$Year.Match == FALSE, ]
+# zzzTI.Mismatch <- zTest[zTest$TI.Match == FALSE, ]
+
+# Remove dataframes created in this chunk
+# rm(zTest, zzzMonth.Mismatch, zzzDay.Mismatch, zzzYear.Mismatch, zzzTI.Mismatch)
+
+```
+
+```{r}
+# # What happens when it is attempted to turn TI numeric?
+# ### RESULT - CONVERTING TO NUMERIC WORKS, EXCEPT IN PLACES WHERE THE TI ENTRY WAS 2*,
+# ###          WHICH OCCURS DURING DAYLIGHT SAVINGS TIME
+# 
+# # Create a copy of the cleaned ISO demand dataframe (zzISO.Dmd.hour)
+# zzzISO.Dmd.hour <- zzISO.Dmd.hour
+# 
+# # Convert the TI column to numeric
+# zzzISO.Dmd.hour$TI <- as.numeric(levels(zzzISO.Dmd.hour$TI))[zzzISO.Dmd.hour$TI]
+# 
+# # Compare TI as factor vs. TI as numeric to see where the NA's are introduced
+# zzzzzA <- data.frame('factorTI' = zzISO.Dmd.hour$TI, 'numericTI' = zzzISO.Dmd.hour$TI)
+# zzzzzB <- zzzzzA[is.na(zzzzzA$numericTI), ]
+# 
+# # Remove values from this chunk
+# # rm(zzzISO.Dmd.hour, zzzzzA, zzzzzB)
+```
+
+
+```{r}
+### Aggregate relevant information, convert relevant information to numeric
+
+library(zoo)
+
+# Aggregate total ISO-NE demand, NH LMP's, UES loads, and ISO-NE zonal loads into one dataframe
+
+ISO.aggregate <- data.frame("Settlement.Date" = zzISO.Dmd.hour$Settlement.Date,
+                            "Month" = zzISO.Dmd.hour$Month,
+                            "Day" = zzISO.Dmd.hour$Day,
+                            "Year" = zzISO.Dmd.hour$Year,
+                            "TI" = zzISO.Dmd.hour$TI,
+                            "ISO.tot.dmd" = zzISO.Dmd.hour$Total.Demand,
+                            "LMP.DA.NH" = LMP.DA$LMP,
+                            "LMP.RT.NH" = LMP.RT$LMP,
+                            "UES.Cap" = UES.Cap$Meter.Reading..Input.,
+                            "UES.Sea" = UES.Sea$Meter.Reading..Input.,
+                            "NH.RT.MWh" = zone.NH$RT.MWh,
+                            "ME.RT.MWh" = zone.ME$RT.MWh,
+                            "VT.RT.MWh" = zone.VT$RT.MWh,
+                            "CT.RT.MWh" = zone.CT$RT.MWh,
+                            "RI.RT.MWh" = zone.RI$RT.MWh,
+                            "MA.SE.RT.MWh" = zone.MA.SE$RT.MWh,
+                            "MA.WC.RT.MWh" = zone.MA.WC$RT.MWh,
+                            "MA.NE.RT.MWh" = zone.MA.NE$RT.MWh)
+
+
+### Write out a .csv of this aggregated data
+# write.csv(ISO.aggregate, file = 'Cleaned_Data1.csv', row.names = FALSE)
+
+### Convert all relevant variables to numeric & other minor cleaning tasks 
+
+## TI
+ISO.aggregate$TI <- as.numeric(levels(ISO.aggregate$TI))[ISO.aggregate$TI] 
+ISO.aggregate$TI[is.na(ISO.aggregate$TI)] <- 2
+
+## ISO-NE total demand
+### NOTE - FILLED NA VALUES WITH MEAN OF VALUES IMMEDIATELY PRECEDING AND FOLLOWING
+ISO.aggregate$ISO.tot.dmd <- as.numeric(gsub("[\\,]", "", ISO.aggregate$ISO.tot.dmd))
+ISO.aggregate$ISO.tot.dmd <- na.approx(ISO.aggregate$ISO.tot.dmd, rule = 2)
+
+## LMP's
+ISO.aggregate$LMP.DA.NH <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$LMP.DA.NH))
+ISO.aggregate$LMP.RT.NH <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$LMP.RT.NH))
+
+## UES Capitol and UES Seacoast loads - Convert to positive values
+
+# Check to make sure that all values are negative 
+# (Negative sign means load is being imported into the region)
+range(ISO.aggregate$UES.Cap)
+range(ISO.aggregate$UES.Sea)
+
+# Convert to positive values
+ISO.aggregate$UES.Cap <- ISO.aggregate$UES.Cap * -1
+ISO.aggregate$UES.Sea <- ISO.aggregate$UES.Sea * -1
+
+# Check to make sure that all values are now positive
+range(ISO.aggregate$UES.Cap)
+range(ISO.aggregate$UES.Sea)
+
+## ISO-NE zonal loads
+### NOTE - FILLED NA VALUES WITH MEAN OF VALUES IMMEDIATELY PRECEDING AND FOLLOWING
+ISO.aggregate$NH.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$NH.RT.MWh))
+ISO.aggregate$NH.RT.MWh <- na.approx(ISO.aggregate$NH.RT.MWh, rule = 2)
+
+ISO.aggregate$ME.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$ME.RT.MWh))
+ISO.aggregate$ME.RT.MWh <- na.approx(ISO.aggregate$ME.RT.MWh, rule = 2)
+
+ISO.aggregate$VT.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$VT.RT.MWh))
+ISO.aggregate$VT.RT.MWh <- na.approx(ISO.aggregate$VT.RT.MWh, rule = 2)
+
+ISO.aggregate$CT.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$CT.RT.MWh))
+ISO.aggregate$CT.RT.MWh <- na.approx(ISO.aggregate$CT.RT.MWh, rule = 2)
+
+ISO.aggregate$RI.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$RI.RT.MWh))
+ISO.aggregate$RI.RT.MWh <- na.approx(ISO.aggregate$RI.RT.MWh, rule = 2)
+
+ISO.aggregate$MA.SE.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$MA.SE.RT.MWh))
+ISO.aggregate$MA.SE.RT.MWh <- na.approx(ISO.aggregate$MA.SE.RT.MWh, rule = 2)
+
+ISO.aggregate$MA.WC.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$MA.WC.RT.MWh))
+ISO.aggregate$MA.WC.RT.MWh <- na.approx(ISO.aggregate$MA.WC.RT.MWh, rule = 2)
+
+ISO.aggregate$MA.NE.RT.MWh <- as.numeric(gsub("[\\$,]", "", ISO.aggregate$MA.NE.RT.MWh))
+ISO.aggregate$MA.NE.RT.MWh <- na.approx(ISO.aggregate$MA.NE.RT.MWh, rule = 2)
+
+
+### Write out a .csv of the data after conversions to numeric
+# write.csv(ISO.aggregate, file = 'Cleaned_Data1.csv', row.names = FALSE)
+
+```
+
+```{r}
+### Double check that there are no NA values after data conversion
+sum(is.na(ISO.aggregate$Settlement.Date))
+sum(is.na(ISO.aggregate$Month))
+sum(is.na(ISO.aggregate$Day))
+sum(is.na(ISO.aggregate$Year))
+sum(is.na(ISO.aggregate$TI))
+sum(is.na(ISO.aggregate$ISO.tot.dmd))
+sum(is.na(ISO.aggregate$LMP.DA.NH))
+sum(is.na(ISO.aggregate$LMP.RT.NH))
+sum(is.na(ISO.aggregate$UES.Cap))
+sum(is.na(ISO.aggregate$UES.Sea))
+sum(is.na(ISO.aggregate$NH.RT.MWh))
+sum(is.na(ISO.aggregate$ME.RT.MWh))
+sum(is.na(ISO.aggregate$VT.RT.MWh))
+sum(is.na(ISO.aggregate$CT.RT.MWh))
+sum(is.na(ISO.aggregate$RI.RT.MWh))
+sum(is.na(ISO.aggregate$MA.SE.RT.MWh))
+sum(is.na(ISO.aggregate$MA.WC.RT.MWh))
+sum(is.na(ISO.aggregate$MA.NE.RT.MWh))
+
+### Check that all data classes are numeric (except for 'Settlement.Date')
+data.class(ISO.aggregate$Settlement.Date)
+data.class(ISO.aggregate$Month)
+data.class(ISO.aggregate$Day)
+data.class(ISO.aggregate$Year)
+data.class(ISO.aggregate$TI)
+data.class(ISO.aggregate$ISO.tot.dmd)
+data.class(ISO.aggregate$LMP.DA.NH)
+data.class(ISO.aggregate$LMP.RT.NH)
+data.class(ISO.aggregate$UES.Cap)
+data.class(ISO.aggregate$UES.Sea)
+data.class(ISO.aggregate$NH.RT.MWh)
+data.class(ISO.aggregate$ME.RT.MWh)
+data.class(ISO.aggregate$VT.RT.MWh)
+data.class(ISO.aggregate$CT.RT.MWh)
+data.class(ISO.aggregate$RI.RT.MWh)
+data.class(ISO.aggregate$MA.SE.RT.MWh)
+data.class(ISO.aggregate$MA.WC.RT.MWh)
+data.class(ISO.aggregate$MA.NE.RT.MWh)
+
+```
+
+
+```{r}
+## Remove all values except ISO.aggregate dataframe
+# rm(ISO.Dmd.5min, ISO.Dmd.hour, ISO.zones, LMP.DA, LMP.RT, UES.Cap, UES.Sea, zone.CT,
+#    zone.hub, zone.MA.NE, zone.MA.SE, zone.MA.WC, zone.ME, zone.NH, zone.RI, zone.VT,
+#    zzISO.Dmd.hour)
+
+```
+
+
+```{r}
+### Add day of week to dataframe
+library(lubridate)
+ISO.aggregate$Wk.Day <- wday(paste(ISO.aggregate$Year, 
+                                    ISO.aggregate$Month,
+                                    ISO.aggregate$Day,
+                                    sep = "-", collapse = NULL),
+                             label = TRUE)
+
+# write.csv(ISO.aggregate, file = 'ISO.aggregate - 7 day SHIFTED.csv', row.names = FALSE)
+```
+
+
+
